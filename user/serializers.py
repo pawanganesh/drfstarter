@@ -150,6 +150,7 @@ class ResetPasswordEmailRequestSerializer(serializers.Serializer):
     """
 
     email = serializers.EmailField(required=True)
+    redirect_url = serializers.CharField(min_length=3, max_length=500, required=True)
 
     def validate(self, attrs):
         attrs = super().validate(attrs)

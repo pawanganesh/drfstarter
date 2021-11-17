@@ -1,11 +1,16 @@
+import os
+
 import jwt
-from django.shortcuts import render, reverse
+from dotenv import load_dotenv
+
+from django.shortcuts import render, reverse, redirect
 from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.utils.encoding import smart_bytes, smart_str, DjangoUnicodeDecodeError
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.contrib.sites.shortcuts import get_current_site
+from django.http import HttpResponsePermanentRedirect
 
 from rest_framework import status
 from rest_framework.request import Request
@@ -23,6 +28,11 @@ from .serializers import UserRegistrationRequestSerializer, UserLoginRequestSeri
 from utils.email import Email
 
 User = get_user_model()
+load_dotenv()
+
+
+class CustomRedirect(HttpResponsePermanentRedirect):
+    allowed_schemes = [os.getenv('APP_SCHEME'), 'http', 'https']
 
 
 class UserViewSet(ModelViewSet):
@@ -114,7 +124,8 @@ class RequestPasswordResetEmail(GenericAPIView):
         token = PasswordResetTokenGenerator().make_token(user)
         current_site = get_current_site(request).domain
         relativelink = reverse('user:password-reset-confirm', kwargs={'uidb64': uidb64, 'token': token})
-        absurl = f'http://{current_site}{relativelink}'
+        redirect_url = serializer.validated_data['redirect_url']
+        absurl = f'http://{current_site}{relativelink}?redirect_url={redirect_url}'
 
         # send email
         # Email.send_email({
@@ -135,22 +146,32 @@ class RequestPasswordResetEmail(GenericAPIView):
 
 
 class PasswordTokenCheckAPI(GenericAPIView):
-    def get(self, request, uidb64, token):
+    @staticmethod
+    def get(request, uidb64, token):
+        redirect_url = request.GET.get('redirect_url', '')
 
         try:
             uid = smart_str(urlsafe_base64_decode(uidb64))
             user = User.objects.get(pk=uid)
 
             if not PasswordResetTokenGenerator().check_token(user, token):
-                return Response({"message": "Token is not valid, please request a new one."},
-                                status=status.HTTP_400_BAD_REQUEST)
-
-            return Response({'valid': True, 'message': 'Token is valid', 'uidb64': uidb64, 'token': token},
-                            status=status.HTTP_200_OK)
-
-
+                if redirect_url and len(redirect_url) > 3:
+                    return CustomRedirect(redirect_url + '?token_valid=false')
+                else:
+                    return CustomRedirect(os.getenv("FRONTEND_URL", '') + '?token_valid=false')
+                # return Response({"message": "Token is not valid, please request a new one."},
+                #                 status=status.HTTP_400_BAD_REQUEST)
+            if redirect_url and len(redirect_url) > 3:
+                return CustomRedirect(
+                    redirect_url + '?token_valid=true?message=tokenvalid?uidb64=' + uidb64 + '?token=' + token)
+            else:
+                return CustomRedirect(os.getenv("FRONTEND_URL", '') + '?token_valid=true')
+            # return Response({'valid': True, 'message': 'Token is valid', 'uidb64': uidb64, 'token': token},
+            #                 status=status.HTTP_200_OK)
 
         except DjangoUnicodeDecodeError:
+            if len(redirect_url) > 3:
+                return CustomRedirect(redirect_url + '?token_valid=False')
             return Response({"message": "Token is not valid, please request a new one."},
                             status=status.HTTP_400_BAD_REQUEST)
 
