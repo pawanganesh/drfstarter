@@ -145,7 +145,7 @@ class RequestPasswordResetEmail(GenericAPIView):
         return Response({"message": "Password reset link sent to your email"}, status=status.HTTP_200_OK)
 
 
-class PasswordTokenCheckAPI(GenericAPIView):
+class PasswordTokenCheckAPI(APIView):
     @staticmethod
     def get(request, uidb64, token):
         redirect_url = request.GET.get('redirect_url', '')
